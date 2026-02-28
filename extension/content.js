@@ -33,7 +33,7 @@ function extractFromArticle(article) {
       const h = a.getAttribute('href') || '';
       return h.includes('/status/') && !h.includes('/analytics') && !h.includes('/photo/');
     });
-  const tweetUrl = tweetLinkEl ? `https://x.com${tweetLinkEl.getAttribute('href')}` : location.href;
+  const tweetUrl = tweetLinkEl ? `https://x.com${tweetLinkEl.getAttribute('href')}` : '';
 
   const imageUrls = [...article.querySelectorAll('img[src*="pbs.twimg.com/media"]')]
     .map((img) => img.src.replace(/&name=\w+/, '&name=orig'))
