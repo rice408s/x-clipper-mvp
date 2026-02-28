@@ -243,7 +243,19 @@ async function humanPause(minMs = 4000, maxMs = 12000) {
 
 async function typeHuman(el, text) {
   el.focus();
-  // clear existing text
+
+  const isEditable = (el.getAttribute('contenteditable') || '').toLowerCase() === 'true';
+  if (isEditable) {
+    el.textContent = '';
+    for (const ch of text) {
+      el.textContent += ch;
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }));
+      await sleep(randInt(35, 120));
+    }
+    return;
+  }
+
+  // fallback for non-contenteditable
   document.execCommand('selectAll', false);
   document.execCommand('insertText', false, '');
   for (const ch of text) {
