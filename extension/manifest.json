@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "X Clipper MVP",
+  "name": "X Ops Studio",
   "version": "0.1.0",
   "description": "Clip tweets and images from X into local JSONL materials.",
   "permissions": ["storage", "downloads", "activeTab", "scripting"],

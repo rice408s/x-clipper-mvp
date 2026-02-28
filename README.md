@@ -1,6 +1,6 @@
-# x-clipper-mvp
+# X Ops Studio
 
-X 浏览器剪藏插件 + 本地素材库 + Skill 双向桥接（MVP）。
+X 运营工作台插件：剪藏 + 互动运营 + 本地素材库 + Skill 双向桥接。
 
 ## 功能
 
