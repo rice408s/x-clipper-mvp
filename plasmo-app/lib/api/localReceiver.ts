@@ -1,16 +1,14 @@
-import { z } from "zod"
 import type { MaterialItem } from "~lib/materials/types"
 
 const BASE = "http://127.0.0.1:8765"
 
-const HealthSchema = z.object({
-  ok: z.boolean()
-})
-
 export async function healthcheck() {
   const r = await fetch(`${BASE}/health`)
   const j = await r.json()
-  return HealthSchema.parse(j)
+  if (!j || typeof j.ok !== "boolean") {
+    throw new Error("invalid health response")
+  }
+  return j as { ok: boolean }
 }
 
 export async function saveClip(record: MaterialItem) {
