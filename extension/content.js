@@ -233,6 +233,25 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function randInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+async function humanPause(minMs = 4000, maxMs = 12000) {
+  await sleep(randInt(minMs, maxMs));
+}
+
+async function typeHuman(el, text) {
+  el.focus();
+  // clear existing text
+  document.execCommand('selectAll', false);
+  document.execCommand('insertText', false, '');
+  for (const ch of text) {
+    document.execCommand('insertText', false, ch);
+    await sleep(randInt(35, 120));
+  }
+}
+
 function findBtn(article, keys = []) {
   return [...article.querySelectorAll('button')].find((b) => {
     const a = (b.getAttribute('aria-label') || '').toLowerCase();
@@ -274,10 +293,8 @@ async function doComment(article, text) {
     || document.querySelector('div[role="dialog"] div[contenteditable="true"]');
   if (!box) return { ok: false, reason: 'reply_box_missing' };
 
-  box.focus();
-  document.execCommand('selectAll', false);
-  document.execCommand('insertText', false, text);
-  await sleep(120);
+  await typeHuman(box, text);
+  await sleep(randInt(300, 900));
 
   const sendBtn = document.querySelector('div[role="dialog"] [data-testid="tweetButton"]')
     || [...document.querySelectorAll('div[role="dialog"] button')].find((b) => /reply/i.test((b.innerText || '').trim()));
@@ -346,12 +363,13 @@ async function runOpsRound({ total = 10 } = {}) {
 
       if (!acted) {
         window.scrollBy(0, Math.floor(window.innerHeight * 0.9));
-        await sleep(420);
+        await sleep(randInt(600, 1400));
       }
     }
 
     if (!acted) done.push({ action, skipped: true });
-    await sleep(180);
+    // 每次互动后做人类化停顿，降低风控风险
+    await humanPause(4000, 12000);
   }
 
   return { ok: true, total_requested: total, completed: done.filter(x => !x.skipped).length, details: done };
