@@ -42,6 +42,12 @@ curl http://127.0.0.1:8765/health
 - 快速剪藏首条
 - 查看剪藏列表
 
+剪藏列表支持：
+- 状态筛选（new / shortlisted / used）
+- 关键词搜索（author/text）
+- 单条操作（shortlist / used / 用于发帖）
+- 批量操作（Top5 shortlists / 清理 used）
+
 剪藏结果会写入：`data/x-materials.jsonl`
 
 ## 4) Skill 脚本

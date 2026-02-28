@@ -74,6 +74,29 @@ async function updateClipById(id, patch) {
   return true;
 }
 
+async function bulkShortlistTopN(n = 5) {
+  const arr = await getClips();
+  const ranked = arr
+    .map((x, i) => ({ i, x }))
+    .filter(({ x }) => (x.status || 'new') !== 'used')
+    .sort((a, b) => (b.x.score || 0) - (a.x.score || 0));
+
+  const pick = ranked.slice(0, n);
+  const now = new Date().toISOString();
+  for (const { i } of pick) {
+    arr[i] = { ...arr[i], status: 'shortlisted', updated_at: now };
+  }
+  await setClips(arr);
+  return pick.length;
+}
+
+async function clearUsedItems() {
+  const arr = await getClips();
+  const next = arr.filter((x) => (x.status || 'new') !== 'used');
+  await setClips(next);
+  return arr.length - next.length;
+}
+
 async function saveClip(record) {
   const arr = await getClips();
   arr.push(record);
@@ -292,12 +315,31 @@ async function showClipList() {
   qInput.placeholder = '搜索 author/text';
   Object.assign(qInput.style, { flex: '1', borderRadius: '6px', border: '1px solid #2f3336', background: '#15202b', color: '#fff', padding: '4px 6px' });
 
+  const tools = document.createElement('div');
+  tools.style.display = 'flex';
+  tools.style.gap = '6px';
+  tools.style.marginTop = '6px';
+
+  const btnTop5 = document.createElement('button');
+  btnTop5.textContent = 'Top5 shortlists';
+  const btnClearUsed = document.createElement('button');
+  btnClearUsed.textContent = '清理 used';
+  for (const b of [btnTop5, btnClearUsed]) {
+    Object.assign(b.style, {
+      border: 'none', borderRadius: '6px', padding: '4px 8px', background: '#1d9bf0',
+      color: '#fff', cursor: 'pointer', fontSize: '11px'
+    });
+  }
+
   controls.appendChild(statusSel);
   controls.appendChild(qInput);
+  tools.appendChild(btnTop5);
+  tools.appendChild(btnClearUsed);
 
   head.appendChild(close);
   head.appendChild(title);
   head.appendChild(controls);
+  head.appendChild(tools);
   modal.appendChild(head);
 
   const listRoot = document.createElement('div');
@@ -378,6 +420,17 @@ async function showClipList() {
       item.appendChild(actions);
       listRoot.appendChild(item);
     }
+  };
+
+  btnTop5.onclick = async () => {
+    const c = await bulkShortlistTopN(5);
+    toast(`已批量 shortlist ${c} 条`);
+    await showClipList();
+  };
+  btnClearUsed.onclick = async () => {
+    const c = await clearUsedItems();
+    toast(`已清理 used ${c} 条`);
+    await showClipList();
   };
 
   statusSel.onchange = render;
