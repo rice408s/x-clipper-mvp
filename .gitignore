@@ -1,0 +1,6 @@
+# local runtime data
+data/*.jsonl
+!data/.gitkeep
+
+# macOS
+.DS_Store

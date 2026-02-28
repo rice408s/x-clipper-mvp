@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "X Clipper MVP",
+  "version": "0.1.0",
+  "description": "Clip tweets and images from X into local JSONL materials.",
+  "permissions": ["storage", "downloads", "activeTab", "scripting"],
+  "host_permissions": ["https://x.com/*", "http://127.0.0.1/*", "http://localhost/*"],
+  "action": {
+    "default_title": "Clip tweet"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
