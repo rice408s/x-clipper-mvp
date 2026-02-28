@@ -8,8 +8,8 @@
 - Zod
 - Zustand
 
-## 已迁移（v0.1）
-- `contents/x.ts`：X 页面注入（悬浮按钮、快速剪藏、下发运营任务）
+## 已迁移（v0.2）
+- `contents/x.ts`：X 页面注入（悬浮按钮、快速剪藏、素材列表、缩略图、草稿填充、下发运营任务）
 - `lib/api/localReceiver.ts`：本地 127.0.0.1:8765 API 封装
 - `popup/index.tsx`：运行状态 + 一键运营任务
 - `options/index.tsx`：设置页骨架
