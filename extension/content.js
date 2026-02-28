@@ -387,6 +387,28 @@ async function showClipList() {
       txt.style.opacity = '0.9';
       txt.style.marginTop = '4px';
 
+      // 缩略图预览（首图）
+      let thumbWrap = null;
+      if (r.image_urls && r.image_urls.length > 0) {
+        thumbWrap = document.createElement('div');
+        thumbWrap.style.marginTop = '6px';
+
+        const img = document.createElement('img');
+        img.src = r.image_urls[0];
+        img.alt = 'thumb';
+        img.loading = 'lazy';
+        Object.assign(img.style, {
+          width: '100%',
+          maxHeight: '140px',
+          objectFit: 'cover',
+          borderRadius: '8px',
+          border: '1px solid #2f3336',
+          cursor: 'pointer'
+        });
+        img.onclick = () => window.open(r.image_urls[0], '_blank', 'noopener,noreferrer');
+        thumbWrap.appendChild(img);
+      }
+
       const actions = document.createElement('div');
       actions.style.marginTop = '6px';
       actions.style.display = 'flex';
@@ -417,6 +439,7 @@ async function showClipList() {
       item.appendChild(top);
       item.appendChild(link);
       item.appendChild(txt);
+      if (thumbWrap) item.appendChild(thumbWrap);
       item.appendChild(actions);
       listRoot.appendChild(item);
     }

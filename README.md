@@ -45,6 +45,7 @@ curl http://127.0.0.1:8765/health
 剪藏列表支持：
 - 状态筛选（new / shortlisted / used）
 - 关键词搜索（author/text）
+- 图片缩略图预览（点击可打开原图）
 - 单条操作（shortlist / used / 用于发帖）
 - 批量操作（Top5 shortlists / 清理 used）
 
