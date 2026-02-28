@@ -299,11 +299,9 @@ async function runOpsRound({ total = 10 } = {}) {
   const usedUrls = new Set();
   let commentIdx = 0;
 
-  for (const action of needed) {
+  const collectCandidates = () => {
     const arts = allArticles();
-    let acted = false;
-
-    const candidates = arts.map((a) => {
+    return arts.map((a) => {
       const row = extractFromArticle(a);
       return { a, row, s: decideCandidateScore(row) };
     }).filter(({ row, s }) => {
@@ -311,20 +309,35 @@ async function runOpsRound({ total = 10 } = {}) {
       if ((row.author || '').toLowerCase() === 'arlooooooo') return false;
       return s >= 2;
     }).sort((x, y) => y.s - x.s);
+  };
 
-    for (const { a, row, s } of candidates) {
-      let r = { ok: false, reason: 'skip' };
-      if (action === 'like') r = await doLike(a);
-      if (action === 'repost') r = await doRepost(a);
-      if (action === 'comment') r = await doComment(a, comments[commentIdx++ % comments.length]);
+  for (const action of needed) {
+    let acted = false;
 
-      if (r.ok) {
-        usedUrls.add(row.tweet_url);
-        done.push({ action, tweet_url: row.tweet_url, author: row.author, score: s });
-        acted = true;
-        break;
+    // 自动滚动扩展候选池（最多 5 屏）
+    for (let pass = 0; pass < 6 && !acted; pass++) {
+      const candidates = collectCandidates();
+
+      for (const { a, row, s } of candidates) {
+        let r = { ok: false, reason: 'skip' };
+        if (action === 'like') r = await doLike(a);
+        if (action === 'repost') r = await doRepost(a);
+        if (action === 'comment') r = await doComment(a, comments[commentIdx++ % comments.length]);
+
+        if (r.ok) {
+          usedUrls.add(row.tweet_url);
+          done.push({ action, tweet_url: row.tweet_url, author: row.author, score: s, pass });
+          acted = true;
+          break;
+        }
+      }
+
+      if (!acted) {
+        window.scrollBy(0, Math.floor(window.innerHeight * 0.9));
+        await sleep(420);
       }
     }
+
     if (!acted) done.push({ action, skipped: true });
     await sleep(180);
   }
