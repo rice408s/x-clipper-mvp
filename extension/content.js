@@ -287,7 +287,19 @@ async function doComment(article, text) {
   return { ok: true };
 }
 
+async function ensureForYouTab() {
+  const btn = [...document.querySelectorAll('[role="tab"]')].find((t) => /for you/i.test((t.innerText || '').trim()));
+  if (btn) {
+    const selected = btn.getAttribute('aria-selected') === 'true';
+    if (!selected) {
+      btn.click();
+      await sleep(500);
+    }
+  }
+}
+
 async function runOpsRound({ total = 10 } = {}) {
+  await ensureForYouTab();
   const needed = ['like', 'like', 'like', 'like', 'repost', 'repost', 'repost', 'comment', 'comment', 'comment'].slice(0, total);
   const comments = [
     'Useful breakdown. The workflow clarity here is what makes AI output reproducible, not just flashy.',
