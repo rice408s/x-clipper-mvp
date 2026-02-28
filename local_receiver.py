@@ -3,29 +3,30 @@ import json
 import os
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 DATA_PATH = os.path.expanduser("/Users/arlo/.openclaw/workspace/x-clipper-mvp/data/x-materials.jsonl")
 os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
 
 
-def load_existing_urls(path):
-    urls = set()
+def load_rows(path):
+    rows = []
     if not os.path.exists(path):
-        return urls
+        return rows
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
             try:
-                row = json.loads(line)
-                u = row.get("tweet_url")
-                if u:
-                    urls.add(u)
+                rows.append(json.loads(line))
             except Exception:
                 continue
-    return urls
+    return rows
+
+
+def load_existing_urls(path):
+    return {r.get("tweet_url") for r in load_rows(path) if r.get("tweet_url")}
 
 
 EXISTING = load_existing_urls(DATA_PATH)
@@ -64,7 +65,8 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path == "/health":
             return self._json(200, {
                 "ok": True,
@@ -81,6 +83,18 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/results":
             return self._json(200, {"ok": True, "results": RESULTS[-20:]})
+
+        if path == "/materials":
+            qs = parse_qs(parsed.query)
+            status = (qs.get("status", ["all"])[0] or "all").lower()
+            limit = int((qs.get("limit", ["20"])[0] or "20"))
+            q = (qs.get("q", [""])[0] or "").lower()
+            rows = sorted(load_rows(DATA_PATH), key=lambda x: x.get("clipped_at", ""), reverse=True)
+            if status != "all":
+                rows = [r for r in rows if (r.get("status") or "new") == status]
+            if q:
+                rows = [r for r in rows if q in (r.get("text", "").lower() + " " + r.get("author", "").lower())]
+            return self._json(200, {"ok": True, "items": rows[:limit], "total": len(rows)})
 
         self._json(404, {"ok": False, "error": "not found"})
 

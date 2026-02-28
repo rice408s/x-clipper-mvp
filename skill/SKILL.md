@@ -47,7 +47,14 @@ Requirements:
 
 ## Pick for posting
 
-Prefer records with:
-1) non-empty `image_urls`
-2) recent `clipped_at`
-3) text relevance to requested topic
+Query shortlisted materials from local receiver:
+
+```bash
+python3 scripts/pick_materials.py --status shortlisted --limit 10
+```
+
+You can also search:
+
+```bash
+python3 scripts/pick_materials.py --status all --q "ai prompt" --limit 10
+```

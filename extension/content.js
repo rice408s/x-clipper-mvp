@@ -247,7 +247,7 @@ async function copyForPost(row) {
 }
 
 async function showClipList() {
-  const arr = (await getClips()).slice().sort((a, b) => (b.clipped_at || '').localeCompare(a.clipped_at || ''));
+  const all = (await getClips()).slice().sort((a, b) => (b.clipped_at || '').localeCompare(a.clipped_at || ''));
 
   const old = document.getElementById('x-clipper-list-modal');
   if (old) old.remove();
@@ -255,13 +255,12 @@ async function showClipList() {
   const modal = document.createElement('div');
   modal.id = 'x-clipper-list-modal';
   Object.assign(modal.style, {
-    position: 'fixed', right: '20px', bottom: '150px', width: '380px', maxHeight: '60vh', overflow: 'auto',
+    position: 'fixed', right: '20px', bottom: '150px', width: '390px', maxHeight: '62vh', overflow: 'auto',
     background: '#0f1419', border: '1px solid #2f3336', borderRadius: '12px', padding: '10px',
     zIndex: '2147483647', boxShadow: '0 10px 30px rgba(0,0,0,0.45)', color: '#e7e9ea', fontSize: '12px'
   });
 
   const head = document.createElement('div');
-  head.innerHTML = `<b>剪藏列表</b>（最近 ${Math.min(arr.length, 20)} 条）`;
   head.style.marginBottom = '8px';
 
   const close = document.createElement('button');
@@ -271,16 +270,59 @@ async function showClipList() {
     background: '#1d9bf0', color: '#fff', cursor: 'pointer', fontSize: '11px'
   });
   close.onclick = () => modal.remove();
+
+  const stats = {
+    total: all.length,
+    new: all.filter(x => (x.status || 'new') === 'new').length,
+    shortlisted: all.filter(x => x.status === 'shortlisted').length,
+    used: all.filter(x => x.status === 'used').length,
+  };
+
+  const title = document.createElement('div');
+  title.innerHTML = `<b>剪藏列表</b> · 总${stats.total} / new ${stats.new} / short ${stats.shortlisted} / used ${stats.used}`;
+
+  const controls = document.createElement('div');
+  controls.style.display = 'flex';
+  controls.style.gap = '6px';
+  controls.style.marginTop = '8px';
+
+  const statusSel = document.createElement('select');
+  statusSel.innerHTML = `<option value="all">全部</option><option value="new">new</option><option value="shortlisted">shortlisted</option><option value="used">used</option>`;
+  const qInput = document.createElement('input');
+  qInput.placeholder = '搜索 author/text';
+  Object.assign(qInput.style, { flex: '1', borderRadius: '6px', border: '1px solid #2f3336', background: '#15202b', color: '#fff', padding: '4px 6px' });
+
+  controls.appendChild(statusSel);
+  controls.appendChild(qInput);
+
   head.appendChild(close);
+  head.appendChild(title);
+  head.appendChild(controls);
   modal.appendChild(head);
 
-  if (arr.length === 0) {
-    const empty = document.createElement('div');
-    empty.textContent = '暂无剪藏内容';
-    empty.style.opacity = '0.8';
-    modal.appendChild(empty);
-  } else {
-    for (const r of arr.slice(0, 20)) {
+  const listRoot = document.createElement('div');
+  modal.appendChild(listRoot);
+
+  const render = () => {
+    const q = (qInput.value || '').toLowerCase().trim();
+    const status = statusSel.value;
+    const rows = all.filter((r) => {
+      const okStatus = status === 'all' ? true : (r.status || 'new') === status;
+      const hay = `${r.author || ''} ${(r.text || '').slice(0, 180)}`.toLowerCase();
+      const okQ = !q || hay.includes(q);
+      return okStatus && okQ;
+    }).slice(0, 30);
+
+    listRoot.innerHTML = '';
+    if (rows.length === 0) {
+      const empty = document.createElement('div');
+      empty.textContent = '当前筛选下暂无内容';
+      empty.style.opacity = '0.8';
+      listRoot.appendChild(empty);
+      return;
+    }
+
+    for (const r of rows) {
       const item = document.createElement('div');
       item.style.borderTop = '1px solid #2f3336';
       item.style.padding = '8px 0';
@@ -309,9 +351,9 @@ async function showClipList() {
       actions.style.gap = '6px';
 
       const mkShort = document.createElement('button');
-      mkShort.textContent = '标记 shortlisted';
+      mkShort.textContent = 'shortlist';
       const mkUsed = document.createElement('button');
-      mkUsed.textContent = '标记 used';
+      mkUsed.textContent = 'used';
       const forPost = document.createElement('button');
       forPost.textContent = '用于发帖';
 
@@ -322,18 +364,9 @@ async function showClipList() {
         });
       }
 
-      mkShort.onclick = async () => {
-        await updateClipById(r.id, { status: 'shortlisted' });
-        toast('已标记 shortlisted');
-      };
-      mkUsed.onclick = async () => {
-        await updateClipById(r.id, { status: 'used' });
-        toast('已标记 used');
-      };
-      forPost.onclick = async () => {
-        await updateClipById(r.id, { status: 'shortlisted' });
-        await copyForPost(r);
-      };
+      mkShort.onclick = async () => { await updateClipById(r.id, { status: 'shortlisted' }); toast('已标记 shortlisted'); };
+      mkUsed.onclick = async () => { await updateClipById(r.id, { status: 'used' }); toast('已标记 used'); };
+      forPost.onclick = async () => { await updateClipById(r.id, { status: 'shortlisted' }); await copyForPost(r); };
 
       actions.appendChild(mkShort);
       actions.appendChild(mkUsed);
@@ -343,10 +376,13 @@ async function showClipList() {
       item.appendChild(link);
       item.appendChild(txt);
       item.appendChild(actions);
-      modal.appendChild(item);
+      listRoot.appendChild(item);
     }
-  }
+  };
 
+  statusSel.onchange = render;
+  qInput.oninput = render;
+  render();
   document.body.appendChild(modal);
 }
 
@@ -357,8 +393,10 @@ function createFloatingUI() {
   fab.id = 'x-clipper-fab';
   fab.title = 'X Clipper';
   fab.textContent = '✂️';
+  const posRaw = localStorage.getItem('x_clipper_fab_pos');
+  const pos = posRaw ? JSON.parse(posRaw) : { right: 20, bottom: 24 };
   Object.assign(fab.style, {
-    position: 'fixed', right: '20px', bottom: '24px', width: '52px', height: '52px',
+    position: 'fixed', right: `${pos.right}px`, bottom: `${pos.bottom}px`, width: '52px', height: '52px',
     borderRadius: '50%', border: 'none', background: '#1d9bf0', color: '#fff',
     fontSize: '24px', cursor: 'pointer', zIndex: '2147483647', boxShadow: '0 8px 24px rgba(29,155,240,0.45)'
   });
@@ -367,7 +405,7 @@ function createFloatingUI() {
   panel.id = 'x-clipper-panel';
   panel.hidden = true;
   Object.assign(panel.style, {
-    position: 'fixed', right: '20px', bottom: '84px', zIndex: '2147483647',
+    position: 'fixed', right: `${pos.right}px`, bottom: `${pos.bottom + 60}px`, zIndex: '2147483647',
     background: '#0f1419', border: '1px solid #2f3336', borderRadius: '12px',
     padding: '8px', width: '190px', boxShadow: '0 10px 30px rgba(0,0,0,0.4)'
   });
@@ -398,6 +436,36 @@ function createFloatingUI() {
     await saveClip(row);
   };
   btnList.onclick = async () => showClipList();
+
+  // 拖拽悬浮球并记忆位置
+  let dragging = false;
+  let sx = 0, sy = 0, sr = 0, sb = 0;
+  fab.addEventListener('mousedown', (e) => {
+    dragging = true;
+    sx = e.clientX; sy = e.clientY;
+    sr = parseInt(fab.style.right, 10) || 20;
+    sb = parseInt(fab.style.bottom, 10) || 24;
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - sx;
+    const dy = e.clientY - sy;
+    const nr = Math.max(8, sr - dx);
+    const nb = Math.max(8, sb - dy);
+    fab.style.right = `${nr}px`;
+    fab.style.bottom = `${nb}px`;
+    panel.style.right = `${nr}px`;
+    panel.style.bottom = `${nb + 60}px`;
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    localStorage.setItem('x_clipper_fab_pos', JSON.stringify({
+      right: parseInt(fab.style.right, 10) || 20,
+      bottom: parseInt(fab.style.bottom, 10) || 24,
+    }));
+  });
 
   const showPanel = () => { panel.hidden = false; };
   const hidePanel = () => { panel.hidden = true; };
