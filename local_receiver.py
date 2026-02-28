@@ -168,21 +168,28 @@ class Handler(BaseHTTPRequestHandler):
                 del RESULTS[:100]
             return self._json(200, {"ok": True})
 
-        if path == "/material/status":
+        if path in {"/material/status", "/material/update"}:
             try:
                 payload = self._read_json()
             except ValueError as e:
                 return self._json(400, {"ok": False, "error": str(e)})
             tweet_url = payload.get("tweet_url")
-            status = (payload.get("status") or "").strip()
-            if not tweet_url or status not in {"new", "shortlisted", "used"}:
-                return self._json(400, {"ok": False, "error": "tweet_url/status invalid"})
+            if not tweet_url:
+                return self._json(400, {"ok": False, "error": "tweet_url required"})
 
             rows = load_rows(DATA_PATH)
             found = False
             for r in rows:
                 if r.get("tweet_url") == tweet_url:
-                    r["status"] = status
+                    if path == "/material/status":
+                        status = (payload.get("status") or "").strip()
+                        if status not in {"new", "shortlisted", "used"}:
+                            return self._json(400, {"ok": False, "error": "invalid status"})
+                        r["status"] = status
+                    else:
+                        patch = payload.get("patch") or {}
+                        for k, v in patch.items():
+                            r[k] = v
                     r["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                     found = True
                     break

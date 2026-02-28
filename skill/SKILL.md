@@ -53,6 +53,12 @@ Get one best next material (prefer shortlisted):
 python3 scripts/next_post_material.py
 ```
 
+Build an X draft from shortlisted material:
+
+```bash
+python3 scripts/build_post_draft.py
+```
+
 Or query list by status/search:
 
 ```bash
@@ -60,12 +66,20 @@ python3 scripts/pick_materials.py --status shortlisted --limit 10
 python3 scripts/pick_materials.py --status all --q "ai prompt" --limit 10
 ```
 
-Mark status after posting:
+Mark status manually:
 
 ```bash
 python3 scripts/mark_material_status.py \
   --tweet-url "https://x.com/xxx/status/123" \
   --status used
+```
+
+Finalize after posting (write back posted URL + mark used):
+
+```bash
+python3 scripts/finalize_post_material.py \
+  --tweet-url "https://x.com/source/status/111" \
+  --x-post-url "https://x.com/you/status/222"
 ```
 
 Get dataset stats:

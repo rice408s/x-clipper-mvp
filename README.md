@@ -78,12 +78,26 @@ python3 skill/scripts/collect_via_plugin.py \
 python3 skill/scripts/next_post_material.py
 ```
 
+### 生成发帖草稿（基于 shortlisted）
+
+```bash
+python3 skill/scripts/build_post_draft.py
+```
+
 ### 更新素材状态
 
 ```bash
 python3 skill/scripts/mark_material_status.py \
   --tweet-url "https://x.com/xxx/status/123" \
   --status used
+```
+
+### 发帖后回写闭环（标记 used + 记录你的帖子链接）
+
+```bash
+python3 skill/scripts/finalize_post_material.py \
+  --tweet-url "https://x.com/source/status/111" \
+  --x-post-url "https://x.com/you/status/222"
 ```
 
 ### 素材库统计
