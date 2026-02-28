@@ -210,6 +210,109 @@ async function collectOnce({ keywords = ['ai'], maxSave = 3, needImage = true, m
   return { scanned, saved, saved_urls: savedUrls };
 }
 
+function isAiRelated(row) {
+  const t = `${row.text || ''}`.toLowerCase();
+  return ['ai', 'aigc', 'workflow', 'midjourney', 'llm', 'image model', 'video model', 'prompt'].some(k => t.includes(k));
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function findBtn(article, keys = []) {
+  return [...article.querySelectorAll('button')].find((b) => {
+    const a = (b.getAttribute('aria-label') || '').toLowerCase();
+    return keys.some((k) => a.includes(k));
+  }) || null;
+}
+
+async function doLike(article) {
+  const btn = findBtn(article, ['like']);
+  if (!btn) return { ok: false, reason: 'no_like_btn' };
+  const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+  if (aria.includes('liked')) return { ok: false, reason: 'already_liked' };
+  btn.click();
+  await sleep(220);
+  return { ok: true };
+}
+
+async function doRepost(article) {
+  const btn = findBtn(article, ['repost']);
+  if (!btn) return { ok: false, reason: 'no_repost_btn' };
+  const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+  if (aria.includes('reposted')) return { ok: false, reason: 'already_reposted' };
+  btn.click();
+  await sleep(250);
+  const menuRepost = [...document.querySelectorAll('[role="menuitem"]')].find((x) => /repost/i.test((x.innerText || '').trim()));
+  if (!menuRepost) return { ok: false, reason: 'repost_menu_missing' };
+  menuRepost.click();
+  await sleep(220);
+  return { ok: true };
+}
+
+async function doComment(article, text) {
+  const btn = findBtn(article, ['reply']);
+  if (!btn) return { ok: false, reason: 'no_reply_btn' };
+  btn.click();
+  await sleep(280);
+
+  const box = document.querySelector('div[role="dialog"] [data-testid="tweetTextarea_0"]')
+    || document.querySelector('div[role="dialog"] div[contenteditable="true"]');
+  if (!box) return { ok: false, reason: 'reply_box_missing' };
+
+  box.focus();
+  document.execCommand('selectAll', false);
+  document.execCommand('insertText', false, text);
+  await sleep(120);
+
+  const sendBtn = document.querySelector('div[role="dialog"] [data-testid="tweetButton"]')
+    || [...document.querySelectorAll('div[role="dialog"] button')].find((b) => /reply/i.test((b.innerText || '').trim()));
+  if (!sendBtn) return { ok: false, reason: 'reply_send_missing' };
+  sendBtn.click();
+  await sleep(220);
+  return { ok: true };
+}
+
+async function runOpsRound({ total = 10 } = {}) {
+  const needed = ['like', 'like', 'like', 'like', 'repost', 'repost', 'repost', 'comment', 'comment', 'comment'].slice(0, total);
+  const comments = [
+    'Useful breakdown. The workflow clarity here is what makes AI output reproducible, not just flashy.',
+    'Great post — this is the kind of practical AI content that helps builders ship faster.',
+    'Love the concrete examples. More people should share setup + constraints + result, not just output.'
+  ];
+
+  const done = [];
+  const usedUrls = new Set();
+  let commentIdx = 0;
+
+  for (const action of needed) {
+    const arts = allArticles();
+    let acted = false;
+    for (const a of arts) {
+      const row = extractFromArticle(a);
+      if (!row.tweet_url || usedUrls.has(row.tweet_url)) continue;
+      if (!isAiRelated(row)) continue;
+      if ((row.author || '').toLowerCase() === 'arlooooooo') continue;
+
+      let r = { ok: false, reason: 'skip' };
+      if (action === 'like') r = await doLike(a);
+      if (action === 'repost') r = await doRepost(a);
+      if (action === 'comment') r = await doComment(a, comments[commentIdx++ % comments.length]);
+
+      if (r.ok) {
+        usedUrls.add(row.tweet_url);
+        done.push({ action, tweet_url: row.tweet_url, author: row.author });
+        acted = true;
+        break;
+      }
+    }
+    if (!acted) done.push({ action, skipped: true });
+    await sleep(180);
+  }
+
+  return { ok: true, total_requested: total, completed: done.filter(x => !x.skipped).length, details: done };
+}
+
 function findArticleByTweetUrl(url) {
   const idMatch = String(url || '').match(/\/status\/(\d+)/);
   if (!idMatch) return null;
@@ -237,6 +340,11 @@ async function executeCommand(cmd) {
   if (action === 'collect_once') {
     const stats = await collectOnce(payload);
     return { ok: true, action, ...stats };
+  }
+
+  if (action === 'ops_round') {
+    const rs = await runOpsRound({ total: Number(payload.total || 10) });
+    return { action, ...rs };
   }
 
   return { ok: false, action, error: 'unknown_action' };
@@ -496,8 +604,10 @@ function createFloatingUI() {
   btnQuick.textContent = '快速剪藏首条';
   const btnList = document.createElement('button');
   btnList.textContent = '查看剪藏列表';
+  const btnOps = document.createElement('button');
+  btnOps.textContent = '运营一轮(10条)';
 
-  for (const b of [btnClip, btnQuick, btnList]) {
+  for (const b of [btnClip, btnQuick, btnList, btnOps]) {
     Object.assign(b.style, {
       width: '100%', marginTop: '6px', border: 'none', borderRadius: '8px',
       padding: '8px 10px', background: '#1d9bf0', color: '#fff', fontSize: '12px', cursor: 'pointer'
@@ -512,6 +622,12 @@ function createFloatingUI() {
     await saveClip(row);
   };
   btnList.onclick = async () => showClipList();
+  btnOps.onclick = async () => {
+    toast('开始执行运营一轮（10条）...');
+    const rs = await runOpsRound({ total: 10 });
+    toast(`运营完成：${rs.completed}/${rs.total_requested}`);
+    console.log('[x-clipper ops]', rs);
+  };
 
   // 拖拽悬浮球并记忆位置
   let dragging = false;
@@ -558,6 +674,7 @@ function createFloatingUI() {
   panel.appendChild(btnClip);
   panel.appendChild(btnQuick);
   panel.appendChild(btnList);
+  panel.appendChild(btnOps);
   document.body.appendChild(panel);
   document.body.appendChild(fab);
 }
