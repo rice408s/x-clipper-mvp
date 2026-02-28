@@ -210,9 +210,23 @@ async function collectOnce({ keywords = ['ai'], maxSave = 3, needImage = true, m
   return { scanned, saved, saved_urls: savedUrls };
 }
 
-function isAiRelated(row) {
+function decideCandidateScore(row) {
   const t = `${row.text || ''}`.toLowerCase();
-  return ['ai', 'aigc', 'workflow', 'midjourney', 'llm', 'image model', 'video model', 'prompt'].some(k => t.includes(k));
+  let score = 0;
+
+  // 强信号
+  if (['ai', 'aigc', 'llm', 'midjourney', 'stable diffusion', 'workflow', 'prompt', 'model'].some(k => t.includes(k))) score += 4;
+  if ((row.image_urls || []).length > 0) score += 2;
+  if ((row.lang || 'en') === 'en') score += 1;
+
+  // 中信号（创作/技术语境）
+  if (['build', 'tool', 'demo', 'agent', 'generate', 'image', 'video', 'automation', 'ship'].some(k => t.includes(k))) score += 1;
+
+  // 降权（低质量/噪音）
+  if (['airdrop', 'casino', 'bet', 'nft mint', 'follow me', 'giveaway'].some(k => t.includes(k))) score -= 4;
+  if ((row.text || '').trim().length < 20) score -= 1;
+
+  return score;
 }
 
 function sleep(ms) {
@@ -288,12 +302,17 @@ async function runOpsRound({ total = 10 } = {}) {
   for (const action of needed) {
     const arts = allArticles();
     let acted = false;
-    for (const a of arts) {
-      const row = extractFromArticle(a);
-      if (!row.tweet_url || usedUrls.has(row.tweet_url)) continue;
-      if (!isAiRelated(row)) continue;
-      if ((row.author || '').toLowerCase() === 'arlooooooo') continue;
 
+    const candidates = arts.map((a) => {
+      const row = extractFromArticle(a);
+      return { a, row, s: decideCandidateScore(row) };
+    }).filter(({ row, s }) => {
+      if (!row.tweet_url || usedUrls.has(row.tweet_url)) return false;
+      if ((row.author || '').toLowerCase() === 'arlooooooo') return false;
+      return s >= 2;
+    }).sort((x, y) => y.s - x.s);
+
+    for (const { a, row, s } of candidates) {
       let r = { ok: false, reason: 'skip' };
       if (action === 'like') r = await doLike(a);
       if (action === 'repost') r = await doRepost(a);
@@ -301,7 +320,7 @@ async function runOpsRound({ total = 10 } = {}) {
 
       if (r.ok) {
         usedUrls.add(row.tweet_url);
-        done.push({ action, tweet_url: row.tweet_url, author: row.author });
+        done.push({ action, tweet_url: row.tweet_url, author: row.author, score: s });
         acted = true;
         break;
       }
