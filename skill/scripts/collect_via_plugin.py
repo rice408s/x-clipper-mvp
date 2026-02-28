@@ -36,6 +36,7 @@ def main():
             "keywords": args.keywords.split(),
             "maxSave": args.max_save,
             "needImage": True,
+            "minScore": 5,
         },
     }
     queued = post("/command", payload)

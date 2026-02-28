@@ -6,6 +6,21 @@ function allArticles() {
   return [...document.querySelectorAll('article')];
 }
 
+function detectLang(text = '') {
+  const zh = /[\u4e00-\u9fff]/.test(text);
+  return zh ? 'zh' : 'en';
+}
+
+function scoreRecord(row) {
+  const text = (row.text || '').toLowerCase();
+  let s = 0;
+  if (row.image_urls?.length) s += 3;
+  if (text.includes('ai') || text.includes('aigc') || text.includes('midjourney') || text.includes('prompt')) s += 2;
+  if ((row.text || '').length > 40) s += 1;
+  if (row.author) s += 1;
+  return s;
+}
+
 function extractFromArticle(article) {
   const textNode = article.querySelector('[data-testid="tweetText"]');
   const text = textNode ? textNode.innerText.trim() : '';
@@ -24,29 +39,50 @@ function extractFromArticle(article) {
     .map((img) => img.src.replace(/&name=\w+/, '&name=orig'))
     .filter(Boolean);
 
-  return {
+  const row = {
     id: crypto.randomUUID(),
     source: 'x',
     tweet_url: tweetUrl,
     author,
     text,
     image_urls: [...new Set(imageUrls)],
-    tags: ['AIGC'],
+    tags: ['AI'],
+    lang: detectLang(text),
+    status: 'new', // new | shortlisted | used
     clipped_at: new Date().toISOString()
   };
+  row.score = scoreRecord(row);
+  return row;
+}
+
+async function getClips() {
+  const key = 'x_clips';
+  const stored = await chrome.storage.local.get([key]);
+  return stored[key] || [];
+}
+
+async function setClips(arr) {
+  await chrome.storage.local.set({ x_clips: arr });
+}
+
+async function updateClipById(id, patch) {
+  const arr = await getClips();
+  const idx = arr.findIndex((x) => x.id === id);
+  if (idx < 0) return false;
+  arr[idx] = { ...arr[idx], ...patch, updated_at: new Date().toISOString() };
+  await setClips(arr);
+  return true;
 }
 
 async function saveClip(record) {
-  const key = 'x_clips';
-  const stored = await chrome.storage.local.get([key]);
-  const arr = stored[key] || [];
+  const arr = await getClips();
   arr.push(record);
-  await chrome.storage.local.set({ [key]: arr });
+  await setClips(arr);
 
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'SAVE_CLIP_LOCAL', record }, (resp) => {
       if (resp?.ok && resp?.data?.saved) {
-        toast(`已剪藏并落库：${record.author || 'unknown'} / 图片 ${record.image_urls.length} 张`);
+        toast(`已剪藏并落库：${record.author || 'unknown'} / score ${record.score}`);
       } else if (resp?.ok && resp?.data?.reason === 'duplicate') {
         toast('已存在，跳过重复素材');
       } else {
@@ -67,80 +103,6 @@ function toast(text) {
   });
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 1800);
-}
-
-async function showClipList() {
-  const key = 'x_clips';
-  const stored = await chrome.storage.local.get([key]);
-  const arr = (stored[key] || []).slice().reverse();
-
-  const old = document.getElementById('x-clipper-list-modal');
-  if (old) old.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'x-clipper-list-modal';
-  Object.assign(modal.style, {
-    position: 'fixed',
-    right: '20px',
-    bottom: '150px',
-    width: '360px',
-    maxHeight: '55vh',
-    overflow: 'auto',
-    background: '#0f1419',
-    border: '1px solid #2f3336',
-    borderRadius: '12px',
-    padding: '10px',
-    zIndex: '2147483647',
-    boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
-    color: '#e7e9ea',
-    fontSize: '12px'
-  });
-
-  const head = document.createElement('div');
-  head.innerHTML = `<b>剪藏列表</b>（最近 ${Math.min(arr.length, 20)} 条）`;
-  head.style.marginBottom = '8px';
-
-  const close = document.createElement('button');
-  close.textContent = '关闭';
-  Object.assign(close.style, {
-    float: 'right', border: 'none', borderRadius: '6px', padding: '4px 8px',
-    background: '#1d9bf0', color: '#fff', cursor: 'pointer', fontSize: '11px'
-  });
-  close.onclick = () => modal.remove();
-  head.appendChild(close);
-  modal.appendChild(head);
-
-  if (arr.length === 0) {
-    const empty = document.createElement('div');
-    empty.textContent = '暂无剪藏内容';
-    empty.style.opacity = '0.8';
-    modal.appendChild(empty);
-  } else {
-    arr.slice(0, 20).forEach((r, i) => {
-      const item = document.createElement('div');
-      item.style.borderTop = i === 0 ? 'none' : '1px solid #2f3336';
-      item.style.padding = '8px 0';
-
-      const link = document.createElement('a');
-      link.href = r.tweet_url || '#';
-      link.target = '_blank';
-      link.rel = 'noreferrer';
-      link.textContent = `${r.author || 'unknown'} · ${r.image_urls?.length || 0}图`;
-      link.style.color = '#8ecdf8';
-      link.style.textDecoration = 'none';
-
-      const txt = document.createElement('div');
-      txt.textContent = (r.text || '').slice(0, 80) || '(无文本)';
-      txt.style.opacity = '0.9';
-      txt.style.marginTop = '4px';
-
-      item.appendChild(link);
-      item.appendChild(txt);
-      modal.appendChild(item);
-    });
-  }
-
-  document.body.appendChild(modal);
 }
 
 let pickMode = false;
@@ -181,8 +143,8 @@ function startPickMode() {
     e.preventDefault();
     e.stopPropagation();
     stop();
-    const record = extractFromArticle(a);
-    await saveClip(record);
+    const row = extractFromArticle(a);
+    await saveClip(row);
   };
 
   const onKey = (e) => {
@@ -197,7 +159,7 @@ function startPickMode() {
   window.addEventListener('keydown', onKey, true);
 }
 
-async function collectOnce({ keywords = ['ai'], maxSave = 3, needImage = true } = {}) {
+async function collectOnce({ keywords = ['ai'], maxSave = 3, needImage = true, minScore = 5 } = {}) {
   const arts = allArticles();
   let scanned = 0;
   let saved = 0;
@@ -213,6 +175,7 @@ async function collectOnce({ keywords = ['ai'], maxSave = 3, needImage = true } 
     const text = `${row.text} ${(row.tags || []).join(' ')}`.toLowerCase();
     const hit = keywords.length === 0 || keywords.some((k) => text.includes(String(k).toLowerCase()));
     if (!hit) continue;
+    if ((row.score || 0) < minScore) continue;
 
     const resp = await saveClip(row);
     if (resp?.ok && resp?.data?.saved) {
@@ -228,10 +191,7 @@ function findArticleByTweetUrl(url) {
   const idMatch = String(url || '').match(/\/status\/(\d+)/);
   if (!idMatch) return null;
   const id = idMatch[1];
-  return allArticles().find((a) => {
-    const link = a.querySelector(`a[href*="/status/${id}"]`);
-    return !!link;
-  }) || null;
+  return allArticles().find((a) => a.querySelector(`a[href*="/status/${id}"]`)) || null;
 }
 
 async function executeCommand(cmd) {
@@ -272,10 +232,122 @@ async function pollCommandsLoop() {
         body: JSON.stringify({ command_id: cmd.id, result, at: new Date().toISOString() })
       });
     }
-  } catch (_e) {
-    // local receiver offline: ignore silently
-  }
+  } catch (_e) {}
   setTimeout(pollCommandsLoop, 2500);
+}
+
+async function copyForPost(row) {
+  const text = `素材参考\n作者: @${row.author || 'unknown'}\n链接: ${row.tweet_url}\n要点: ${(row.text || '').slice(0, 140)}`;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('已复制“用于发帖”素材到剪贴板');
+  } catch {
+    toast('复制失败，请手动复制');
+  }
+}
+
+async function showClipList() {
+  const arr = (await getClips()).slice().sort((a, b) => (b.clipped_at || '').localeCompare(a.clipped_at || ''));
+
+  const old = document.getElementById('x-clipper-list-modal');
+  if (old) old.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'x-clipper-list-modal';
+  Object.assign(modal.style, {
+    position: 'fixed', right: '20px', bottom: '150px', width: '380px', maxHeight: '60vh', overflow: 'auto',
+    background: '#0f1419', border: '1px solid #2f3336', borderRadius: '12px', padding: '10px',
+    zIndex: '2147483647', boxShadow: '0 10px 30px rgba(0,0,0,0.45)', color: '#e7e9ea', fontSize: '12px'
+  });
+
+  const head = document.createElement('div');
+  head.innerHTML = `<b>剪藏列表</b>（最近 ${Math.min(arr.length, 20)} 条）`;
+  head.style.marginBottom = '8px';
+
+  const close = document.createElement('button');
+  close.textContent = '关闭';
+  Object.assign(close.style, {
+    float: 'right', border: 'none', borderRadius: '6px', padding: '4px 8px',
+    background: '#1d9bf0', color: '#fff', cursor: 'pointer', fontSize: '11px'
+  });
+  close.onclick = () => modal.remove();
+  head.appendChild(close);
+  modal.appendChild(head);
+
+  if (arr.length === 0) {
+    const empty = document.createElement('div');
+    empty.textContent = '暂无剪藏内容';
+    empty.style.opacity = '0.8';
+    modal.appendChild(empty);
+  } else {
+    for (const r of arr.slice(0, 20)) {
+      const item = document.createElement('div');
+      item.style.borderTop = '1px solid #2f3336';
+      item.style.padding = '8px 0';
+
+      const top = document.createElement('div');
+      top.innerHTML = `<b>@${r.author || 'unknown'}</b> · ${r.image_urls?.length || 0}图 · score ${r.score || 0} · <span style="opacity:.8">${r.status || 'new'}</span>`;
+
+      const link = document.createElement('a');
+      link.href = r.tweet_url || '#';
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+      link.textContent = r.tweet_url || '(no url)';
+      link.style.color = '#8ecdf8';
+      link.style.textDecoration = 'none';
+      link.style.display = 'block';
+      link.style.marginTop = '4px';
+
+      const txt = document.createElement('div');
+      txt.textContent = (r.text || '').slice(0, 100) || '(无文本)';
+      txt.style.opacity = '0.9';
+      txt.style.marginTop = '4px';
+
+      const actions = document.createElement('div');
+      actions.style.marginTop = '6px';
+      actions.style.display = 'flex';
+      actions.style.gap = '6px';
+
+      const mkShort = document.createElement('button');
+      mkShort.textContent = '标记 shortlisted';
+      const mkUsed = document.createElement('button');
+      mkUsed.textContent = '标记 used';
+      const forPost = document.createElement('button');
+      forPost.textContent = '用于发帖';
+
+      for (const b of [mkShort, mkUsed, forPost]) {
+        Object.assign(b.style, {
+          border: 'none', borderRadius: '6px', padding: '4px 8px', background: '#1d9bf0',
+          color: '#fff', cursor: 'pointer', fontSize: '11px'
+        });
+      }
+
+      mkShort.onclick = async () => {
+        await updateClipById(r.id, { status: 'shortlisted' });
+        toast('已标记 shortlisted');
+      };
+      mkUsed.onclick = async () => {
+        await updateClipById(r.id, { status: 'used' });
+        toast('已标记 used');
+      };
+      forPost.onclick = async () => {
+        await updateClipById(r.id, { status: 'shortlisted' });
+        await copyForPost(r);
+      };
+
+      actions.appendChild(mkShort);
+      actions.appendChild(mkUsed);
+      actions.appendChild(forPost);
+
+      item.appendChild(top);
+      item.appendChild(link);
+      item.appendChild(txt);
+      item.appendChild(actions);
+      modal.appendChild(item);
+    }
+  }
+
+  document.body.appendChild(modal);
 }
 
 function createFloatingUI() {
@@ -288,8 +360,7 @@ function createFloatingUI() {
   Object.assign(fab.style, {
     position: 'fixed', right: '20px', bottom: '24px', width: '52px', height: '52px',
     borderRadius: '50%', border: 'none', background: '#1d9bf0', color: '#fff',
-    fontSize: '24px', cursor: 'pointer', zIndex: '2147483647',
-    boxShadow: '0 8px 24px rgba(29,155,240,0.45)'
+    fontSize: '24px', cursor: 'pointer', zIndex: '2147483647', boxShadow: '0 8px 24px rgba(29,155,240,0.45)'
   });
 
   const panel = document.createElement('div');
@@ -298,7 +369,7 @@ function createFloatingUI() {
   Object.assign(panel.style, {
     position: 'fixed', right: '20px', bottom: '84px', zIndex: '2147483647',
     background: '#0f1419', border: '1px solid #2f3336', borderRadius: '12px',
-    padding: '8px', width: '180px', boxShadow: '0 10px 30px rgba(0,0,0,0.4)'
+    padding: '8px', width: '190px', boxShadow: '0 10px 30px rgba(0,0,0,0.4)'
   });
 
   const title = document.createElement('div');
@@ -311,6 +382,7 @@ function createFloatingUI() {
   btnQuick.textContent = '快速剪藏首条';
   const btnList = document.createElement('button');
   btnList.textContent = '查看剪藏列表';
+
   for (const b of [btnClip, btnQuick, btnList]) {
     Object.assign(b.style, {
       width: '100%', marginTop: '6px', border: 'none', borderRadius: '8px',
@@ -322,8 +394,8 @@ function createFloatingUI() {
   btnQuick.onclick = async () => {
     const article = pickActiveArticle();
     if (!article) return toast('没找到帖子');
-    const record = extractFromArticle(article);
-    await saveClip(record);
+    const row = extractFromArticle(article);
+    await saveClip(row);
   };
   btnList.onclick = async () => showClipList();
 
