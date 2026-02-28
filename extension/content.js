@@ -244,12 +244,13 @@ async function humanPause(minMs = 4000, maxMs = 12000) {
 async function typeHuman(el, text) {
   el.focus();
 
+  // Draft.js / contenteditable 输入框
   const isEditable = (el.getAttribute('contenteditable') || '').toLowerCase() === 'true';
   if (isEditable) {
-    el.textContent = '';
+    document.execCommand('selectAll', false);
+    document.execCommand('delete', false);
     for (const ch of text) {
-      el.textContent += ch;
-      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }));
+      document.execCommand('insertText', false, ch);
       await sleep(randInt(35, 120));
     }
     return;
@@ -463,15 +464,52 @@ function buildDraftText(row) {
   return `Signal from my AI feed today:\n${core}\n\nPractical workflows > hype.\n\nSource inspo: ${row.tweet_url}\n#AI #AIGC #BuildInPublic`;
 }
 
+const PENDING_DRAFT_KEY = 'x_ops_pending_draft';
+
+function savePendingDraft(payload) {
+  localStorage.setItem(PENDING_DRAFT_KEY, JSON.stringify({ ...payload, ts: Date.now() }));
+}
+
+function loadPendingDraft() {
+  const raw = localStorage.getItem(PENDING_DRAFT_KEY);
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw);
+    if (!p?.text) return null;
+    // 10分钟过期
+    if (Date.now() - (p.ts || 0) > 10 * 60 * 1000) {
+      localStorage.removeItem(PENDING_DRAFT_KEY);
+      return null;
+    }
+    return p;
+  } catch {
+    return null;
+  }
+}
+
 async function waitForComposer(maxMs = 12000) {
   const started = Date.now();
   while (Date.now() - started < maxMs) {
-    const box = document.querySelector('[data-testid="tweetTextarea_0"]')
-      || document.querySelector('div[contenteditable="true"][role="textbox"]');
+    const wrapper = document.querySelector('[data-testid="tweetTextarea_0"]');
+    const fromWrapper = wrapper ? (wrapper.querySelector('[contenteditable="true"]') || wrapper) : null;
+    const globalEditable = document.querySelector('div[contenteditable="true"][role="textbox"]');
+    const box = fromWrapper || globalEditable;
     if (box) return box;
     await sleep(250);
   }
   return null;
+}
+
+async function fillPendingDraftIfAny() {
+  if (!location.href.includes('/compose/post')) return;
+  const pending = loadPendingDraft();
+  if (!pending) return;
+
+  const box = await waitForComposer(15000);
+  if (!box) return;
+  await typeHuman(box, pending.text);
+  localStorage.removeItem(PENDING_DRAFT_KEY);
+  toast('草稿已填充（未自动发布）');
 }
 
 async function openDraftWithMaterial() {
@@ -483,9 +521,13 @@ async function openDraftWithMaterial() {
   }
 
   const draft = buildDraftText(row);
+  await updateClipById(row.id, { status: 'shortlisted', drafted_at: new Date().toISOString() });
+
   if (!location.href.includes('/compose/post')) {
+    savePendingDraft({ text: draft, rowId: row.id });
     location.href = 'https://x.com/compose/post';
-    await sleep(900);
+    toast('正在跳转并填充草稿...');
+    return;
   }
 
   const box = await waitForComposer(15000);
@@ -495,7 +537,6 @@ async function openDraftWithMaterial() {
   }
 
   await typeHuman(box, draft);
-  await updateClipById(row.id, { status: 'shortlisted', drafted_at: new Date().toISOString() });
   toast('草稿已填充（未自动发布）');
 }
 
@@ -817,4 +858,5 @@ window.addEventListener('keydown', async (e) => {
 });
 
 createFloatingUI();
+fillPendingDraftIfAny();
 pollCommandsLoop();
