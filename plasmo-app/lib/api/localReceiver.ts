@@ -37,3 +37,8 @@ export async function listMaterials(status = "all", limit = 20, q = "") {
   const r = await fetch(u.toString())
   return r.json()
 }
+
+export async function listResults() {
+  const r = await fetch(`${BASE}/results`)
+  return r.json()
+}

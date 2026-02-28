@@ -3,7 +3,12 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "~/*": ["./*"]
+      "~/*": [
+        "./*"
+      ]
     }
-  }
+  },
+  "include": [
+    ".plasmo/index.d.ts"
+  ]
 }

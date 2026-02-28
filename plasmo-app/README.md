@@ -8,12 +8,13 @@
 - Zod
 - Zustand
 
-## 已迁移（v0.2）
-- `contents/x.ts`：X 页面注入（悬浮按钮、快速剪藏、素材列表、缩略图、草稿填充、下发运营任务）
-- `lib/api/localReceiver.ts`：本地 127.0.0.1:8765 API 封装
-- `popup/index.tsx`：运行状态 + 一键运营任务
-- `options/index.tsx`：设置页骨架
+## 已迁移（v0.3）
+- `contents/x.ts`：X 页面注入（悬浮按钮、快速剪藏、素材列表、缩略图、草稿填充、按设置下发运营任务）
+- `lib/api/localReceiver.ts`：本地 127.0.0.1:8765 API 封装（含 results 查询）
+- `popup/index.tsx`：运行状态 + 一键运营任务 + 最近任务摘要
+- `options/index.tsx`：规则配置（每轮互动数、间隔区间）并持久化
 - `lib/ops/scoring.ts`：候选打分函数
+- `lib/ops/settings.ts`：运营设置读写
 
 ## 运行
 ```bash

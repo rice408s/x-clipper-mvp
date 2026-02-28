@@ -2,6 +2,7 @@ import type { PlasmoCSConfig } from "plasmo"
 import { saveClip, enqueueCommand } from "~lib/api/localReceiver"
 import { decideCandidateScore } from "~lib/ops/scoring"
 import type { MaterialItem } from "~lib/materials/types"
+import { loadOpsSettings } from "~lib/ops/settings"
 
 export const config: PlasmoCSConfig = {
   matches: ["https://x.com/*"],
@@ -88,8 +89,13 @@ async function clipTop() {
 }
 
 async function runOpsRound() {
-  const rs = await enqueueCommand("ops_round", { total: 10 })
-  toast(`已下发运营任务 #${rs?.queued?.id || "?"}`)
+  const s = await loadOpsSettings()
+  const rs = await enqueueCommand("ops_round", {
+    total: s.roundTotal,
+    minDelaySec: s.minDelaySec,
+    maxDelaySec: s.maxDelaySec
+  })
+  toast(`已下发运营任务 #${rs?.queued?.id || "?"}（${s.roundTotal}条）`)
 }
 
 function pickDraftMaterial(items: MaterialItem[]) {
