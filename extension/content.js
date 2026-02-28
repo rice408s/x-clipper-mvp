@@ -439,6 +439,54 @@ async function copyForPost(row) {
   }
 }
 
+function pickBestMaterialForDraft(items) {
+  const shortlisted = items.filter((x) => (x.status || 'new') === 'shortlisted');
+  const pool = shortlisted.length ? shortlisted : items;
+  if (!pool.length) return null;
+  return pool.slice().sort((a, b) => (b.score || 0) - (a.score || 0))[0];
+}
+
+function buildDraftText(row) {
+  const core = (row.text || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  return `Signal from my AI feed today:\n${core}\n\nPractical workflows > hype.\n\nSource inspo: ${row.tweet_url}\n#AI #AIGC #BuildInPublic`;
+}
+
+async function waitForComposer(maxMs = 12000) {
+  const started = Date.now();
+  while (Date.now() - started < maxMs) {
+    const box = document.querySelector('[data-testid="tweetTextarea_0"]')
+      || document.querySelector('div[contenteditable="true"][role="textbox"]');
+    if (box) return box;
+    await sleep(250);
+  }
+  return null;
+}
+
+async function openDraftWithMaterial() {
+  const items = await getClips();
+  const row = pickBestMaterialForDraft(items);
+  if (!row) {
+    toast('没有可用素材，请先剪藏或 shortlist');
+    return;
+  }
+
+  const draft = buildDraftText(row);
+  if (!location.href.includes('/compose/post')) {
+    location.href = 'https://x.com/compose/post';
+    await sleep(900);
+  }
+
+  const box = await waitForComposer(15000);
+  if (!box) {
+    toast('未找到发帖输入框，请稍后再试');
+    return;
+  }
+
+  await typeHuman(box, draft);
+  await updateClipById(row.id, { status: 'shortlisted', drafted_at: new Date().toISOString() });
+  toast('草稿已填充（未自动发布）');
+}
+
 async function showClipList() {
   const all = (await getClips()).slice().sort((a, b) => (b.clipped_at || '').localeCompare(a.clipped_at || ''));
 
@@ -666,10 +714,12 @@ function createFloatingUI() {
   btnQuick.textContent = '快速剪藏首条';
   const btnList = document.createElement('button');
   btnList.textContent = '查看剪藏列表';
+  const btnDraft = document.createElement('button');
+  btnDraft.textContent = '生成发帖草稿';
   const btnOps = document.createElement('button');
   btnOps.textContent = '运营一轮(10条)';
 
-  for (const b of [btnClip, btnQuick, btnList, btnOps]) {
+  for (const b of [btnClip, btnQuick, btnList, btnDraft, btnOps]) {
     Object.assign(b.style, {
       width: '100%', marginTop: '6px', border: 'none', borderRadius: '8px',
       padding: '8px 10px', background: '#1d9bf0', color: '#fff', fontSize: '12px', cursor: 'pointer'
@@ -684,6 +734,10 @@ function createFloatingUI() {
     await saveClip(row);
   };
   btnList.onclick = async () => showClipList();
+  btnDraft.onclick = async () => {
+    toast('正在生成草稿...');
+    await openDraftWithMaterial();
+  };
   btnOps.onclick = async () => {
     toast('开始执行运营一轮（10条）...');
     const rs = await runOpsRound({ total: 10 });
@@ -736,6 +790,7 @@ function createFloatingUI() {
   panel.appendChild(btnClip);
   panel.appendChild(btnQuick);
   panel.appendChild(btnList);
+  panel.appendChild(btnDraft);
   panel.appendChild(btnOps);
   document.body.appendChild(panel);
   document.body.appendChild(fab);
