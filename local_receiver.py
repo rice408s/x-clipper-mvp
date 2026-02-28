@@ -96,6 +96,27 @@ class Handler(BaseHTTPRequestHandler):
                 rows = [r for r in rows if q in (r.get("text", "").lower() + " " + r.get("author", "").lower())]
             return self._json(200, {"ok": True, "items": rows[:limit], "total": len(rows)})
 
+        if path == "/stats":
+            rows = load_rows(DATA_PATH)
+            total = len(rows)
+            with_image = len([r for r in rows if (r.get("image_urls") or [])])
+            by_status = {"new": 0, "shortlisted": 0, "used": 0}
+            for r in rows:
+                s = (r.get("status") or "new")
+                by_status[s] = by_status.get(s, 0) + 1
+            top_authors = {}
+            for r in rows:
+                a = r.get("author") or "unknown"
+                top_authors[a] = top_authors.get(a, 0) + 1
+            top_authors = sorted(top_authors.items(), key=lambda kv: kv[1], reverse=True)[:10]
+            return self._json(200, {
+                "ok": True,
+                "total": total,
+                "with_image": with_image,
+                "by_status": by_status,
+                "top_authors": top_authors,
+            })
+
         self._json(404, {"ok": False, "error": "not found"})
 
     def do_POST(self):
@@ -146,6 +167,33 @@ class Handler(BaseHTTPRequestHandler):
             if len(RESULTS) > 200:
                 del RESULTS[:100]
             return self._json(200, {"ok": True})
+
+        if path == "/material/status":
+            try:
+                payload = self._read_json()
+            except ValueError as e:
+                return self._json(400, {"ok": False, "error": str(e)})
+            tweet_url = payload.get("tweet_url")
+            status = (payload.get("status") or "").strip()
+            if not tweet_url or status not in {"new", "shortlisted", "used"}:
+                return self._json(400, {"ok": False, "error": "tweet_url/status invalid"})
+
+            rows = load_rows(DATA_PATH)
+            found = False
+            for r in rows:
+                if r.get("tweet_url") == tweet_url:
+                    r["status"] = status
+                    r["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                    found = True
+                    break
+            if not found:
+                return self._json(404, {"ok": False, "error": "material not found"})
+
+            with open(DATA_PATH, "w", encoding="utf-8") as f:
+                f.write("# x materials\n")
+                for r in rows:
+                    f.write(json.dumps(r, ensure_ascii=False) + "\n")
+            return self._json(200, {"ok": True, "updated": True})
 
         self._json(404, {"ok": False, "error": "not found"})
 

@@ -72,6 +72,26 @@ python3 skill/scripts/collect_via_plugin.py \
   --wait-seconds 30
 ```
 
+### 获取下一个发帖素材（优先 shortlisted）
+
+```bash
+python3 skill/scripts/next_post_material.py
+```
+
+### 更新素材状态
+
+```bash
+python3 skill/scripts/mark_material_status.py \
+  --tweet-url "https://x.com/xxx/status/123" \
+  --status used
+```
+
+### 素材库统计
+
+```bash
+python3 skill/scripts/materials_stats.py
+```
+
 ### 导入外部 JSONL 并去重
 
 ```bash
